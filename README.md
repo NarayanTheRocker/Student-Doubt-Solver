@@ -7,9 +7,10 @@ This project uses:
 
 Follow these steps to install everything and set up the model paths.
 
----
 LLM Model: TinyLlama-1.1B-Chat-v0.4-Q4_K_M.gguf
 Image Analysis Model : Blip_Base
+---
+
 
 ## Installation
 
