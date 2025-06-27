@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student AI Assistant</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f0f2f5; color: #333; display: flex; min-height: 100vh; box-sizing: border-box;}
+        .sidebar { width: 250px; background-color: #e9ebee; padding: 20px; border-right: 1px solid #dddfe2; overflow-y: auto; flex-shrink: 0; }
+        .sidebar h2 { color: #1877f2; margin-bottom: 20px; font-size: 22px; }
+        .saved-item { background-color: #fff; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; cursor: pointer; transition: background-color 0.2s; border: 1px solid #cce0f5; }
+        .saved-item:hover { background-color: #e7f3ff; }
+        .saved-item-query { font-weight: bold; color: #4b4f56; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .saved-item-timestamp { font-size: 0.8em; color: #777; margin-top: 5px; }
+        .container { background-color: #fff; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 100%; max-width: 700px; margin: 20px; }
+        h1 { text-align: center; color: #1877f2; margin-bottom: 25px; font-size: 28px; }
+        .input-section, .query-display-section, .solution-section, .feedback-section { margin-bottom: 25px; padding: 20px; border: 1px solid #dddfe2; border-radius: 8px; background-color: #f9f9f9; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #4b4f56; }
+        input[type="text"], textarea, input[type="file"] { width: calc(100% - 24px); padding: 12px; margin-bottom: 15px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+        textarea { min-height: 70px; resize: vertical; }
+        button, .feedback-btn { background-color: #1877f2; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background-color 0.2s; }
+        button:hover, .feedback-btn:hover { background-color: #166fe5; }
+        #record-voice-btn { background-color: #34A853; width: 50px; flex-shrink: 0; margin-left: 10px; border-radius: 6px; }
+        #record-voice-btn.recording { background-color: #ea4335; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(234, 67, 53, 0); } 100% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0); } }
+        .solution { margin-top: 10px; padding: 15px; background-color: #e7f3ff; border: 1px solid #cce0f5; border-radius: 6px; white-space: pre-wrap; font-size: 16px; line-height: 1.6; position: relative;}
+        .save-button-container { position: absolute; top: 10px; right: 10px; }
+        .save-button-container button { padding: 8px 12px; font-size: 14px; background-color: #6c757d; }
+        .save-button-container button:hover { background-color: #5a6268; }
+        .feedback-message { margin-top:15px; padding:12px; border-radius:6px; font-size: 15px; text-align: center; }
+        .feedback-message.success { background-color:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+        .feedback-message.error { background-color:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+        .input-options { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .input-options label { display: flex; align-items: center; gap: 5px; font-weight: normal; cursor: pointer; padding: 0; border: none; }
+        .input-options input[type="radio"] { display: none; }
+        .input-options input[type="radio"] + span { padding: 8px 15px; border-radius: 20px; border: 1px solid #ddd; display: inline-block; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+        .input-options input[type="radio"]:checked + span { background-color: #1877f2; color: white; border-color: #1877f2; }
+        .uploaded-image { max-width: 100%; max-height: 300px; height: auto; border-radius: 6px; margin-top: 10px; border: 1px solid #ddd; display: block; margin-left: auto; margin-right: auto; }
+        
+        .feedback-buttons { margin-top: 15px; display: flex; gap: 10px; justify-content: center; }
+
+        /* Styles for the dedicated saved result display */
+        .saved-result-display { display: none; /* Initially hidden */
+            padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); background-color: #fff; width: 100%; max-width: 700px; margin: 20px;
+        }
+        .saved-result-display h2 { color: #1877f2; margin-bottom: 15px; }
+        .saved-result-display .question-box,
+        .saved-result-display .answer-box {
+            background-color: #f9f9f9; padding: 20px; border-radius: 8px; border: 1px solid #dddfe2; margin-bottom: 20px;
+        }
+        .saved-result-display .question-box strong,
+        .saved-result-display .answer-box strong { color: #4b4f56; display: block; margin-bottom: 10px; }
+        .saved-result-display .back-button { margin-top: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Saved Results</h2>
+        <div id="saved-results-list">
+            {% if saved_results %}
+                {% for item in saved_results %}
+                    <div class="saved-item" data-query="{{ item.query | e }}" data-solution="{{ item.solution | e }}">
+                        <div class="saved-item-query">{{ item.query }}</div>
+                        <div class="saved-item-timestamp">{{ item.timestamp.split('T')[0] }}</div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p style="font-size: 0.9em; color: #666;">No results saved yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="container" id="main-content-area">
+
+        <div id="main-interface">
+            <h1>🎓 Student AI Assistant</h1>
+
+            <form method="POST" enctype="multipart/form-data" id="main-form" action="{{ url_for('index') }}">
+                <div class="input-section">
+                    <h2>1. Select Input Type</h2>
+                    <div class="input-options">
+                        <label>
+                            <input type="radio" name="input_type" value="text" onchange="showInputFields()" {% if selected_input_type == 'text' %}checked{% endif %}>
+                            <span>📝 Text</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="input_type" value="image" onchange="showInputFields()" {% if selected_input_type == 'image' %}checked{% endif %}>
+                            <span>🖼️ Image</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="input_type" value="voice" onchange="showInputFields()" {% if selected_input_type == 'voice' %}checked{% endif %}>
+                            <span>🎤 Voice</span>
+                        </label>
+                    </div>
+
+                    <div id="text_input_div" style="display:none;">
+                        <label for="text_input">Enter your question (or click 🎤 to record):</label>
+                        <div style="display: flex; align-items: center;">
+                            <textarea name="text_input" id="text_input" rows="3" style="flex-grow: 1;">{{ user_query or '' }}</textarea>
+                            <button type="button" id="record-voice-btn" title="Record Voice">🎤</button>
+                        </div>
+                        <p id="voice-status" style="font-size: 14px; color: #555; height: 1em; margin-top: 5px;"></p>
+                    </div>
+
+                    <div id="image_input_div" style="display:none;">
+                        <label for="image_file">Upload Image:</label>
+                        <input type="file" name="image_file" id="image_file" accept="image/*">
+                        <label for="text_input_for_image">Ask a question about the image (optional):</label>
+                        <input type="text" name="text_input_for_image" id="text_input_for_image" value="{{ request.form.text_input_for_image or '' }}">
+                    </div>
+                    
+                    <h2>2. Get Solution</h2>
+                    <button type="submit">Submit to AI</button>
+                </div>
+            </form>
+
+            {% if feedback_message %}<div class="feedback-message {% if 'Thank you' in feedback_message %}success{% else %}error{% endif %}">{{ feedback_message }}</div>{% endif %}
+            
+            {% if user_query or image_filename_display %}
+            <div class="query-display-section" id="current-query-display">
+                <h2>Your Query:</h2>
+                {% if image_filename_display %}
+                    <p><strong>Uploaded Image:</strong></p>
+                    <img src="{{ url_for('static', filename='uploads/' + image_filename_display) }}" alt="Uploaded Image" class="uploaded-image">
+                {% endif %}
+                {% if user_query %}
+                    <p style="white-space: pre-wrap;"><strong>Question/Text:</strong> <span id="displayed-query">{{ user_query }}</span></p>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if solution %}
+            <div class="solution-section" id="current-solution-display">
+                <h2>Solution:</h2>
+                <div class="solution">
+                    <div class="save-button-container">
+                        <button type="button" id="save-result-btn" data-query="{{ user_query | e }}" data-solution="{{ solution | e }}">Save</button>
+                    </div>
+                    <span id="displayed-solution">{{ solution }}</span>
+                </div>
+                {% if show_feedback_form %}
+                <div class="feedback-section">
+                    <h3>Was this solution helpful?</h3>
+                    <form method="POST" action="{{ url_for('index') }}" class="feedback-buttons">
+                        <input type="hidden" name="original_query_for_feedback_hidden" value="{{ original_query_for_feedback_hidden }}">
+                        <input type="hidden" name="original_solution_hidden" value="{{ original_solution_hidden }}">
+                        <input type="hidden" name="original_input_type_hidden" value="{{ selected_input_type }}">
+                        <button type="submit" name="feedback" value="good" class="feedback-btn">👍 Yes</button>
+                        <button type="submit" name="feedback" value="bad" class="feedback-btn">👎 No</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="saved-result-display" id="saved-result-detail-view">
+            <h1>Saved Result</h1>
+            <div class="question-box">
+                <strong>Question:</strong>
+                <p id="saved-detail-query"></p>
+            </div>
+            <div class="answer-box">
+                <strong>Answer:</strong>
+                <p id="saved-detail-solution"></p>
+            </div>
+            <div class="back-button">
+                <button type="button" id="back-to-main-btn">← Back to Main</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function showInputFields() {
+            const inputType = document.querySelector('input[name="input_type"]:checked').value;
+            document.getElementById('text_input_div').style.display = (inputType === 'text' || inputType === 'voice') ? 'block' : 'none';
+            document.getElementById('image_input_div').style.display = (inputType === 'image') ? 'block' : 'none';
+            
+            const recordBtn = document.getElementById('record-voice-btn');
+            if (inputType === 'voice' || inputType === 'text') {
+                recordBtn.style.display = 'block';
+            } else {
+                recordBtn.style.display = 'none';
+            }
+        }
+
+        // Function to toggle visibility of main interface vs. saved detail view
+        function toggleMainView(showMain) {
+            const mainInterface = document.getElementById('main-interface');
+            const savedDetailView = document.getElementById('saved-result-detail-view');
+            const currentQueryDisplay = document.getElementById('current-query-display');
+            const currentSolutionDisplay = document.getElementById('current-solution-display');
+            const feedbackMessage = document.querySelector('.feedback-message'); // Also hide/show feedback messages
+
+            if (showMain) {
+                mainInterface.style.display = 'block';
+                savedDetailView.style.display = 'none';
+                if (currentQueryDisplay) currentQueryDisplay.style.display = 'block';
+                if (currentSolutionDisplay) currentSolutionDisplay.style.display = 'block';
+                if (feedbackMessage) feedbackMessage.style.display = 'block'; // Show feedback messages if present
+            } else {
+                mainInterface.style.display = 'none';
+                savedDetailView.style.display = 'block';
+                if (currentQueryDisplay) currentQueryDisplay.style.display = 'none';
+                if (currentSolutionDisplay) currentSolutionDisplay.style.display = 'none';
+                if (feedbackMessage) feedbackMessage.style.display = 'none'; // Hide feedback messages
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial state based on server-side rendering
+            const selectedTypeFromServer = "{{ selected_input_type | default('text', true) }}";
+            document.querySelector(`input[name="input_type"][value="${selectedTypeFromServer}"]`).checked = true;
+            showInputFields();
+
+            // Ensure the main interface is visible on page load, unless a specific feedback message is set
+            const feedbackMessage = document.querySelector('.feedback-message');
+            if (!feedbackMessage) { // If no feedback message is displayed on load
+                toggleMainView(true);
+            }
+            
+            // --- WEB SPEECH API IMPLEMENTATION (unchanged) ---
+            const recordBtn = document.getElementById('record-voice-btn');
+            const textInputArea = document.getElementById('text_input');
+            const voiceStatus = document.getElementById('voice-status');
+            
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                const recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'en-US';
+                let isRecording = false, final_transcript = '';
+
+                recordBtn.onclick = () => { isRecording ? recognition.stop() : recognition.start(); };
+                recognition.onstart = () => { 
+                    isRecording = true; 
+                    recordBtn.innerHTML = '🛑'; 
+                    recordBtn.classList.add('recording'); 
+                    voiceStatus.textContent = "Listening..."; 
+                    final_transcript = textInputArea.value;
+                };
+                recognition.onend = () => { 
+                    isRecording = false; 
+                    recordBtn.innerHTML = '🎤'; 
+                    recordBtn.classList.remove('recording'); 
+                    voiceStatus.textContent = "Recording stopped."; 
+                    textInputArea.value = final_transcript;
+                };
+                recognition.onerror = (event) => { 
+                    voiceStatus.textContent = 'Error: ' + event.error; 
+                    isRecording = false; 
+                    recordBtn.innerHTML = '🎤'; 
+                    recordBtn.classList.remove('recording'); 
+                };
+                recognition.onresult = (event) => {
+                    let interim_transcript = '';
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            final_transcript += event.results[i][0].transcript + ' ';
+                        } else {
+                            interim_transcript += event.results[i][0].transcript;
+                        }
+                    }
+                    textInputArea.value = final_transcript + interim_transcript;
+                };
+            } else {
+                recordBtn.disabled = true;
+                voiceStatus.textContent = "Speech recognition not supported in this browser.";
+            }
+
+            // --- Save Result Logic (unchanged) ---
+            const saveResultBtn = document.getElementById('save-result-btn');
+            if (saveResultBtn) {
+                saveResultBtn.addEventListener('click', function() {
+                    const query = this.dataset.query;
+                    const solution = this.dataset.solution;
+
+                    fetch('/save_result', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: query, solution: solution })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === "success") {
+                            alert(data.message);
+                            location.reload(); 
+                        } else {
+                            alert("Failed to save result: " + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error saving result:', error);
+                        alert("An error occurred while saving the result.");
+                    });
+                });
+            }
+
+            // --- Load Saved Results into Dedicated View ---
+            const savedResultsList = document.getElementById('saved-results-list');
+            const savedDetailQuery = document.getElementById('saved-detail-query');
+            const savedDetailSolution = document.getElementById('saved-detail-solution');
+            const backToMainBtn = document.getElementById('back-to-main-btn');
+
+            if (savedResultsList) {
+                savedResultsList.addEventListener('click', function(event) {
+                    const savedItem = event.target.closest('.saved-item');
+                    if (savedItem) {
+                        const query = savedItem.dataset.query;
+                        const solution = savedItem.dataset.solution;
+
+                        // Populate the dedicated view
+                        savedDetailQuery.textContent = query;
+                        savedDetailSolution.textContent = solution;
+
+                        // Hide main interface, show saved result detail view
+                        toggleMainView(false);
+                    }
+                });
+            }
+
+            // --- Back Button Logic ---
+            if (backToMainBtn) {
+                backToMainBtn.addEventListener('click', function() {
+                    toggleMainView(true); // Show the main interface
+                });
+            }
+        });
+    </script>
+</body>
+</html>
